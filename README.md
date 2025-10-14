@@ -7,7 +7,9 @@
 
 ### Check version of cgroups 
 
-```stat -fc %T /sys/fs/cgroup/```   #If the output is cgroup2fs, it means cgroup v2 is in use; if it is tmpfs, it means cgroup v1 is in use
+```stat -fc %T /sys/fs/cgroup/```   
+
+If the output is cgroup2fs, it means cgroup v2 is in use; if it is tmpfs, it means cgroup v1 is in use
 
 ### Check that CPU partitioning is online
 
