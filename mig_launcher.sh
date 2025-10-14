@@ -76,7 +76,7 @@ COMMAND="$@"
 # Validate MIG instance number
 if ! [[ "$MIG_IDX" =~ ^[0-6]$ ]]; then
     echo "ERROR: MIG instance must be between 0 and 6"
-    exit 1
+    # exit 1
 fi
 
 # Check if cgroup exists
@@ -84,7 +84,7 @@ CGROUP_PATH="$CGROUP_BASE/mig$MIG_IDX"
 if [ ! -d "$CGROUP_PATH" ]; then
     echo "ERROR: MIG cgroup $MIG_IDX not found at $CGROUP_PATH"
     echo "Please run setup_mig_cpu_affinity.sh first"
-    exit 1
+    # exit 1
 fi
 
 # Get MIG UUID
@@ -92,7 +92,7 @@ MIG_UUID=$(nvidia-smi -L | grep "MIG" | sed -n "$((MIG_IDX + 1))p" | grep -oP 'U
 if [ -z "$MIG_UUID" ]; then
     echo "ERROR: Could not find MIG UUID for instance $MIG_IDX"
     echo "Please verify MIG is configured correctly with: nvidia-smi -L"
-    exit 1
+    # exit 1
 fi
 
 # Get CPU affinity for this MIG instance

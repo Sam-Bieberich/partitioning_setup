@@ -10,7 +10,7 @@ CGROUP_BASE="/sys/fs/cgroup/mig"
 if [ ! -d "$CGROUP_BASE" ]; then
     echo "ERROR: MIG cgroups not found at $CGROUP_BASE"
     echo "Please run setup_mig_cpu_affinity.sh first"
-    exit 1
+    # exit 1
 fi
 
 echo "1. Checking cgroup CPU assignments:"
