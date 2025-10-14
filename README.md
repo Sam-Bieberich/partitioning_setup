@@ -6,7 +6,9 @@
 * Run the cgroups_claude.sh bash file with sudo to create 7 partitions of the CPU, which are then connected with the 7 MIG partitions from earlier. MIG must be set up already for this file to run. 
 * Basic usage of mig_launcher.sh:
 
+```
 ./mig_launcher.sh <mig_instance_number> <your_command>
+```
 
 Examples:
 ```
@@ -15,6 +17,8 @@ Examples:
 ./mig_launcher.sh -d 2 python job.py          # Run on MIG 2 in background
 ./mig_launcher.sh -v 3 python debug.py        # Run on MIG 3 with verbose output
 ```
+
+
 
 ### Check version of cgroups 
 
