@@ -33,3 +33,5 @@ for i in {0..6}; do
     echo "MIG $i CPUs: $(cat /sys/fs/cgroup/mig/mig$i/cpuset.cpus)"
 done
 ```
+
+* If there is a python program running on htop (click t after htop to see CPU tree), and it needs to be killed, do the kill $PID or killall python3. 
