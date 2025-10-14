@@ -1,22 +1,33 @@
 #!/bin/bash
 
 usage() {
-  echo "Usage: $0 [-e] [-d] [-c] [-l]"
-  echo "  -e  Enable MIG mode on GPU 0"
-  echo "  -d  Delete old compute and GPU instances on GPU 0"
-  echo "  -c  Create 7 partitions with profile 19 on GPU 0"
-  echo "  -l  Show MIG profiles and current partitions"
+  echo "Usage: $0 [--enable|--delete|--create|--list]"
+  echo "  --enable    Enable MIG mode on GPU 0 (alias: -e)"
+  echo "  --delete    Delete old compute and GPU instances on GPU 0 (alias: -d)"
+  echo "  --create    Create 7 partitions with profile 19 on GPU 0 (alias: -c)"
+  echo "  --list      Show MIG profiles and current partitions (alias: -l)"
   exit 1
 }
 
-# Parse flags
-while getopts "edcl" opt; do
-  case $opt in
-    e) do_enable=true ;;
-    d) do_delete=true ;;
-    c) do_create=true ;;
-    l) do_list=true ;;
-    *) usage ;;
+# Parse flags: support GNU-style long options and short aliases for compatibility.
+# We don't rely on external getopt; handle arguments in a simple while loop.
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --enable|-e)
+      do_enable=true; shift ;;
+    --delete|-d)
+      do_delete=true; shift ;;
+    --create|-c)
+      do_create=true; shift ;;
+    --list|-l)
+      do_list=true; shift ;;
+    --help|-h)
+      usage ;;
+    --)
+      shift; break ;;
+    *)
+      echo "Unknown option: $1" >&2
+      usage ;;
   esac
 done
 

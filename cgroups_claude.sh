@@ -6,8 +6,8 @@
 set -e
 
 # Configuration
-TOTAL_CPUS=72  # Fixed CPU count from lscpu
-NUM_MIG_INSTANCES=7
+TOTAL_CPUS=72  # Fixed CPU count from lscpu, could also automate this later
+NUM_MIG_INSTANCES=7 # Also fixed to make the code simpler
 CPUS_PER_INSTANCE=$((TOTAL_CPUS / NUM_MIG_INSTANCES))
 CGROUP_BASE="/sys/fs/cgroup/mig"
 
@@ -129,5 +129,5 @@ run_on_mig() {
 EOF
 
 echo ""
-echo "Usage: run_on_mig <instance_number> <command>"
-echo "Example: run_on_mig 0 python train.py"
+echo "Usage: cgroups_claude <instance_number> <command>"
+echo "Example: cgroups_claude 0 python train.py"
