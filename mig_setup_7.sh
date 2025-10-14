@@ -23,6 +23,8 @@ echo "--------------------------"
 echo "Creating 7 partitions"
 sudo nvidia-smi mig -cgi 19,19,19,19,19,19,19 -C
 
+echo "Confirming partitions"
+
 nvidia-smi -L
 
 echo "--------------------------"
