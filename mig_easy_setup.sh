@@ -24,7 +24,7 @@ echo "Creating 7 partitions"
 
 GI_ID=$(nvidia-smi mig -lgip | awk '/1g\./{print $2,$0}' | awk '$1 ~ /[0-9]+/ {print $1}' | head -n1)
 if [ -z "$GI_ID" ]; then echo "ERROR: Could not find 1g.* GI profile id"; exit 1; fi
-sudo nvidia-smi mig -cgi $GI_ID -C --count 7
+sudo nvidia-smi mig -cgi $(printf "%s," $GI_ID $GI_ID $GI_ID $GI_ID $GI_ID $GI_ID $GI_ID | sed 's/,$//') -C
 
 # sudo nvidia-smi mig -cgi 19,19,19,19,19,19,19 -C
 
