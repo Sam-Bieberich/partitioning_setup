@@ -109,9 +109,24 @@ if [ "$VERBOSE" = true ]; then
     echo ""
 fi
 
-# Create a wrapper script that will be executed
-WRAPPER_SCRIPT=$(mktemp /tmp/mig_wrapper_XXXXXX.sh)
-chmod +x "$WRAPPER_SCRIPT"
+# Choose a user-owned directory for wrapper scripts to avoid /tmp noexec/root_squash issues
+RUNTIME_DIR="${XDG_RUNTIME_DIR:-}"
+if [ -z "$RUNTIME_DIR" ]; then
+    # Fall back to a cache dir in the invoking user's home when available
+    if [ -n "$SUDO_USER" ]; then
+        USER_HOME=$(getent passwd "$SUDO_USER" 2>/dev/null | awk -F: '{print $6}')
+    else
+        USER_HOME="$HOME"
+    fi
+    RUNTIME_DIR="$USER_HOME/.cache/mig_launcher"
+fi
+
+mkdir -p "$RUNTIME_DIR" 2>/dev/null || true
+chmod 700 "$RUNTIME_DIR" 2>/dev/null || true
+
+# Create a wrapper script that will be executed in the runtime dir
+WRAPPER_SCRIPT=$(mktemp "$RUNTIME_DIR/mig_wrapper_XXXXXX.sh")
+chmod 755 "$WRAPPER_SCRIPT"
 
 cat > "$WRAPPER_SCRIPT" << EOFWRAPPER
 #!/bin/bash
@@ -124,9 +139,11 @@ EOFWRAPPER
 # drop privileges back to the original user for the actual workload to avoid
 # NFS root_squash and permission issues on shared filesystems.
 if [ "$EUID" -eq 0 ] && [ -n "$SUDO_USER" ]; then
-    LAUNCH_CMD=(sudo -u "$SUDO_USER" -E "$WRAPPER_SCRIPT")
+    # Ensure the wrapper is owned and executable by the invoking user
+    chown "$SUDO_USER" "$WRAPPER_SCRIPT" 2>/dev/null || true
+    LAUNCH_CMD=(sudo -u "$SUDO_USER" -E bash "$WRAPPER_SCRIPT")
 else
-    LAUNCH_CMD=("$WRAPPER_SCRIPT")
+    LAUNCH_CMD=(bash "$WRAPPER_SCRIPT")
 fi
 
 # Function to move process to cgroup
