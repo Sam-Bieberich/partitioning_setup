@@ -1,5 +1,15 @@
 # Partitioning setup files
 
+## Workflow
+
+1. Either run mig_easy_setup.sh to immediately create the MIG partitions, or run mig_flags.sh with the --create flag if the node has already been reset.
+
+2. MIG should be confirmed as being "successful"
+
+3. Run the setup_mig_cpu_affinity.sh to create cgroups which interface with the MIG partitions in the same 1/7 resource ratio. 
+
+4. 
+
 ## File Explanations
 
 * Run the mig_setup_7.sh bash file to create seven equal partitions of the GPU on a node. Requires sudo access. To test that sudo works, you can run sudo -v
