@@ -128,5 +128,5 @@ run_on_mig() {
 EOF
 
 echo ""
-echo "Usage: cgroups_claude <instance_number> <command>"
-echo "Example: cgroups_claude 0 python train.py"
+echo "Usage: setup_mig_cpu_affinity.sh <instance_number> <command>"
+echo "Example: setup_mig_cpu_affinity.sh 0 python train.py"
