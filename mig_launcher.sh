@@ -71,7 +71,8 @@ fi
 
 MIG_IDX=$1
 shift
-COMMAND="$@"
+# Remaining arguments constitute the command to run; keep as array for safe passing
+CMD_ARGS=("$@")
 
 # Validate MIG instance number
 if ! [[ "$MIG_IDX" =~ ^[0-6]$ ]]; then
@@ -109,17 +110,14 @@ if [ "$VERBOSE" = true ]; then
     echo ""
 fi
 
-# Choose a user-owned directory for wrapper scripts to avoid /tmp noexec/root_squash issues
-RUNTIME_DIR="${XDG_RUNTIME_DIR:-}"
-if [ -z "$RUNTIME_DIR" ]; then
-    # Fall back to a cache dir in the invoking user's home when available
-    if [ -n "$SUDO_USER" ]; then
-        USER_HOME=$(getent passwd "$SUDO_USER" 2>/dev/null | awk -F: '{print $6}')
-    else
-        USER_HOME="$HOME"
-    fi
-    RUNTIME_DIR="$USER_HOME/.cache/mig_launcher"
+# Choose a user-owned directory for wrapper scripts (avoid /tmp policies)
+if [ -n "$SUDO_USER" ]; then
+    USER_HOME=$(getent passwd "$SUDO_USER" 2>/dev/null | awk -F: '{print $6}')
+    if [ -z "$USER_HOME" ]; then USER_HOME=$(eval echo ~"$SUDO_USER"); fi
+else
+    USER_HOME="$HOME"
 fi
+RUNTIME_DIR="$USER_HOME/.cache/mig_launcher"
 
 mkdir -p "$RUNTIME_DIR" 2>/dev/null || true
 chmod 700 "$RUNTIME_DIR" 2>/dev/null || true
@@ -130,9 +128,13 @@ chmod 755 "$WRAPPER_SCRIPT"
 
 cat > "$WRAPPER_SCRIPT" << EOFWRAPPER
 #!/bin/bash
+set -euo pipefail
 export CUDA_VISIBLE_DEVICES=$MIG_UUID
-cd "$PWD"
-exec $COMMAND
+# Attempt to change to original working directory (ignore failures)
+cd "$PWD" 2>/dev/null || true
+
+# Apply CPU pinning immediately via taskset as a belt-and-suspenders alongside cgroups
+exec taskset -c "$CPU_AFFINITY" -- "$@"
 EOFWRAPPER
 
 # Determine user context for launching the workload. If invoked with sudo,
@@ -141,9 +143,9 @@ EOFWRAPPER
 if [ "$EUID" -eq 0 ] && [ -n "$SUDO_USER" ]; then
     # Ensure the wrapper is owned and executable by the invoking user
     chown "$SUDO_USER" "$WRAPPER_SCRIPT" 2>/dev/null || true
-    LAUNCH_CMD=(sudo -u "$SUDO_USER" -E bash "$WRAPPER_SCRIPT")
+    LAUNCH_CMD=(sudo -u "$SUDO_USER" -E bash "$WRAPPER_SCRIPT" -- "$@")
 else
-    LAUNCH_CMD=(bash "$WRAPPER_SCRIPT")
+    LAUNCH_CMD=(bash "$WRAPPER_SCRIPT" -- "$@")
 fi
 
 # Function to move process to cgroup
@@ -173,7 +175,7 @@ move_to_cgroup() {
 # Run the command
 if [ "$DETACH" = true ]; then
     # Detached mode
-    "${LAUNCH_CMD[@]}" &
+    "${LAUNCH_CMD[@]}" "${CMD_ARGS[@]}" &
     PID=$!
     
     move_to_cgroup $PID
@@ -185,7 +187,7 @@ if [ "$DETACH" = true ]; then
     (sleep 2; rm -f "$WRAPPER_SCRIPT") &
 else
     # Foreground mode
-    "${LAUNCH_CMD[@]}" &
+    "${LAUNCH_CMD[@]}" "${CMD_ARGS[@]}" &
     PID=$!
     
     move_to_cgroup $PID
