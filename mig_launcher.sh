@@ -122,25 +122,25 @@ EOFWRAPPER
 
 # Function to move process to cgroup
 move_to_cgroup() {
-    local pid=\$1
+    local pid=$1
     local max_attempts=10
     local attempt=0
     
-    while [ \$attempt -lt \$max_attempts ]; do
-        if [ -d "/proc/\$pid" ]; then
-            echo \$pid | sudo tee "$CGROUP_PATH/cgroup.procs" > /dev/null 2>&1
-            if [ \$? -eq 0 ]; then
+    while [ $attempt -lt $max_attempts ]; do
+        if [ -d "/proc/$pid" ]; then
+            echo $pid | sudo tee "$CGROUP_PATH/cgroup.procs" > /dev/null 2>&1
+            if [ $? -eq 0 ]; then
                 if [ "$VERBOSE" = true ]; then
-                    echo "Process \$pid moved to cgroup $CGROUP_PATH"
+                    echo "Process $pid moved to cgroup $CGROUP_PATH"
                 fi
                 return 0
             fi
         fi
         sleep 0.1
-        attempt=\$((attempt + 1))
+        attempt=$((attempt + 1))
     done
     
-    echo "WARNING: Failed to move process \$pid to cgroup" >&2
+    echo "WARNING: Failed to move process $pid to cgroup" >&2
     return 1
 }
 
