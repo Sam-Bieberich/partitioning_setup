@@ -120,6 +120,15 @@ cd "$PWD"
 exec $COMMAND
 EOFWRAPPER
 
+# Determine user context for launching the workload. If invoked with sudo,
+# drop privileges back to the original user for the actual workload to avoid
+# NFS root_squash and permission issues on shared filesystems.
+if [ "$EUID" -eq 0 ] && [ -n "$SUDO_USER" ]; then
+    LAUNCH_CMD=(sudo -u "$SUDO_USER" -E "$WRAPPER_SCRIPT")
+else
+    LAUNCH_CMD=("$WRAPPER_SCRIPT")
+fi
+
 # Function to move process to cgroup
 move_to_cgroup() {
     local pid=$1
@@ -147,7 +156,7 @@ move_to_cgroup() {
 # Run the command
 if [ "$DETACH" = true ]; then
     # Detached mode
-    $WRAPPER_SCRIPT &
+    "${LAUNCH_CMD[@]}" &
     PID=$!
     
     move_to_cgroup $PID
@@ -159,7 +168,7 @@ if [ "$DETACH" = true ]; then
     (sleep 2; rm -f "$WRAPPER_SCRIPT") &
 else
     # Foreground mode
-    $WRAPPER_SCRIPT &
+    "${LAUNCH_CMD[@]}" &
     PID=$!
     
     move_to_cgroup $PID
