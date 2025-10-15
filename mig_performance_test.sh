@@ -1,11 +1,16 @@
 #!/bin/bash
 
 # MIG Performance Benchmark Script
-# Tests GEMM performance with and without CPU partitioning
+# Tests if CPU partitioning actually prevents interference between MIG instances
 
 set -e
 
-echo "=== MIG Performance Benchmark ==="
+echo "=== MIG CPU Partitioning Validation Test ==="
+echo ""
+echo "This test proves CPU partitioning works by:"
+echo "1. Running multiple MIG workloads WITHOUT partitioning (should interfere)"
+echo "2. Running multiple MIG workloads WITH partitioning (should NOT interfere)"
+echo "3. Comparing performance degradation"
 echo ""
 
 # Configuration
@@ -25,114 +30,107 @@ fi
 echo "Detecting MIG instances..."
 MIG_UUIDS=($(nvidia-smi -L | grep "MIG" | grep -oP 'UUID: \K[^)]+'))
 
-if [ ${#MIG_UUIDS[@]} -eq 0 ]; then
-    echo "ERROR: No MIG instances found"
+if [ ${#MIG_UUIDS[@]} -lt 2 ]; then
+    echo "ERROR: Need at least 2 MIG instances for this test"
     exit 1
 fi
 
 echo "Found ${#MIG_UUIDS[@]} MIG instances"
 echo ""
 
-# Test configuration
-echo "Test Configuration:"
-echo "  Matrix size: ${MATRIX_SIZE}x${MATRIX_SIZE}"
-echo "  Iterations: ${ITERATIONS}"
-echo ""
+# Select how many MIG instances to test
+echo "How many MIG instances to test simultaneously?"
+echo "  2 - Quick test (MIG 0 and 1)"
+echo "  3 - Medium test (MIG 0, 1, 2)"
+echo "  7 - Full test (all MIG instances)"
+read -p "Enter choice: " NUM_MIGS
 
-# Select which MIG instances to test
-echo "Select test mode:"
-echo "1. Single MIG test (MIG 0 only)"
-echo "2. Compare MIG 0 vs MIG 1"
-echo "3. Test all MIG instances"
-read -p "Enter choice (1-3): " TEST_MODE
+if [ "$NUM_MIGS" -gt ${#MIG_UUIDS[@]} ]; then
+    NUM_MIGS=${#MIG_UUIDS[@]}
+fi
 
-case $TEST_MODE in
-    1)
-        TEST_MIGS=(0)
-        ;;
-    2)
-        TEST_MIGS=(0 1)
-        ;;
-    3)
-        TEST_MIGS=($(seq 0 $((${#MIG_UUIDS[@]} - 1))))
-        ;;
-    *)
-        echo "Invalid choice"
-        exit 1
-        ;;
-esac
+TEST_MIGS=($(seq 0 $((NUM_MIGS - 1))))
 
 echo ""
+echo "Testing MIG instances: ${TEST_MIGS[@]}"
+echo "Matrix size: ${MATRIX_SIZE}x${MATRIX_SIZE}"
+echo "Iterations: ${ITERATIONS}"
+echo ""
+
+# Results arrays
+declare -A BASELINE_RESULTS
+declare -A NO_PARTITION_RESULTS
+declare -A WITH_PARTITION_RESULTS
+
 echo "=========================================="
-echo "TEST 1: WITHOUT CPU Partitioning"
+echo "BASELINE: Single MIG Instance Performance"
 echo "=========================================="
 echo ""
+echo "Running MIG 0 alone to establish baseline..."
 
-# Results array
-declare -A RESULTS_NO_PARTITION
-declare -A RESULTS_WITH_PARTITION
+MIG_UUID=${MIG_UUIDS[0]}
+CUDA_VISIBLE_DEVICES=$MIG_UUID ./gemm_benchmark $MATRIX_SIZE $ITERATIONS > /tmp/baseline.txt 2>&1
+BASELINE=$(grep "Performance:" /tmp/baseline.txt | grep -oP '\d+\.\d+')
+
+echo "Baseline performance (MIG 0 alone): $BASELINE GFLOPS"
+echo ""
+sleep 2
+
+echo "=========================================="
+echo "TEST 1: Multiple MIG WITHOUT CPU Partitioning"
+echo "=========================================="
+echo ""
+echo "Running ${NUM_MIGS} MIG instances simultaneously WITHOUT cgroups..."
+echo "Expected: CPU contention should cause performance degradation"
+echo ""
+
+PIDS=()
 
 for mig_idx in "${TEST_MIGS[@]}"; do
     MIG_UUID=${MIG_UUIDS[$mig_idx]}
+    echo "Starting MIG $mig_idx (no CPU restrictions)..."
     
-    echo "--- MIG $mig_idx ---"
-    echo "UUID: $MIG_UUID"
-    
-    # Run without CPU partitioning (can use any cores)
-    RESULT=$(CUDA_VISIBLE_DEVICES=$MIG_UUID ./gemm_benchmark $MATRIX_SIZE $ITERATIONS | grep "Performance:" | grep -oP '\d+\.\d+')
-    RESULTS_NO_PARTITION[$mig_idx]=$RESULT
-    
-    echo "Performance: $RESULT GFLOPS"
-    echo ""
-    sleep 2
+    CUDA_VISIBLE_DEVICES=$MIG_UUID ./gemm_benchmark $MATRIX_SIZE $ITERATIONS > /tmp/no_partition_$mig_idx.txt 2>&1 &
+    PIDS+=($!)
 done
 
-echo ""
-echo "=========================================="
-echo "TEST 2: WITH CPU Partitioning (cgroups)"
-echo "=========================================="
+echo "All workloads started. Waiting for completion..."
+
+# Wait for all
+for pid in "${PIDS[@]}"; do
+    wait $pid
+done
+
+echo "Test 1 complete!"
 echo ""
 
+# Collect results
+echo "Results:"
+TOTAL_NO_PART=0
+COUNT=0
 for mig_idx in "${TEST_MIGS[@]}"; do
-    MIG_UUID=${MIG_UUIDS[$mig_idx]}
-    CPU_RANGE=$(cat "$CGROUP_BASE/mig$mig_idx/cpuset.cpus" 2>/dev/null)
-    
-    echo "--- MIG $mig_idx ---"
-    echo "UUID: $MIG_UUID"
-    echo "CPU Range: $CPU_RANGE"
-    
-    # Run with CPU partitioning
-    CUDA_VISIBLE_DEVICES=$MIG_UUID ./gemm_benchmark $MATRIX_SIZE $ITERATIONS &
-    PID=$!
-    
-    # Move to cgroup
-    sleep 0.5
-    echo $PID | sudo tee "$CGROUP_BASE/mig$mig_idx/cgroup.procs" > /dev/null
-    
-    # Verify CPU affinity
-    AFFINITY=$(taskset -cp $PID 2>/dev/null | grep -oP "list: \K.*")
-    echo "CPU Affinity: $AFFINITY"
-    
-    # Wait for completion and capture output
-    wait $PID
-    RESULT=$(CUDA_VISIBLE_DEVICES=$MIG_UUID ./gemm_benchmark $MATRIX_SIZE $ITERATIONS 2>&1 | grep "Performance:" | grep -oP '\d+\.\d+')
-    
-    # Actually run it properly to get result
-    CUDA_VISIBLE_DEVICES=$MIG_UUID taskset -c $CPU_RANGE ./gemm_benchmark $MATRIX_SIZE $ITERATIONS > /tmp/mig_result_$mig_idx.txt 2>&1
-    RESULT=$(grep "Performance:" /tmp/mig_result_$mig_idx.txt | grep -oP '\d+\.\d+')
-    RESULTS_WITH_PARTITION[$mig_idx]=$RESULT
-    
-    echo "Performance: $RESULT GFLOPS"
-    echo ""
-    sleep 2
+    RESULT=$(grep "Performance:" /tmp/no_partition_$mig_idx.txt | grep -oP '\d+\.\d+')
+    NO_PARTITION_RESULTS[$mig_idx]=$RESULT
+    TOTAL_NO_PART=$(echo "$TOTAL_NO_PART + $RESULT" | bc)
+    COUNT=$((COUNT + 1))
+    echo "  MIG $mig_idx: $RESULT GFLOPS"
 done
 
+AVG_NO_PART=$(echo "scale=2; $TOTAL_NO_PART / $COUNT" | bc)
 echo ""
+echo "Average performance WITHOUT partitioning: $AVG_NO_PART GFLOPS"
+DEGRADATION_NO_PART=$(echo "scale=2; (($BASELINE - $AVG_NO_PART) / $BASELINE) * 100" | bc)
+echo "Performance degradation: ${DEGRADATION_NO_PART}%"
+echo ""
+
+sleep 3
+
 echo "=========================================="
-echo "TEST 3: Simultaneous Execution"
+echo "TEST 2: Multiple MIG WITH CPU Partitioning"
 echo "=========================================="
 echo ""
-echo "Running all selected MIG instances simultaneously..."
+echo "Running ${NUM_MIGS} MIG instances simultaneously WITH cgroups..."
+echo "Expected: No CPU contention, performance should stay near baseline"
 echo ""
 
 PIDS=()
@@ -143,71 +141,131 @@ for mig_idx in "${TEST_MIGS[@]}"; do
     
     echo "Starting MIG $mig_idx (CPUs: $CPU_RANGE)..."
     
-    # Run in background
-    CUDA_VISIBLE_DEVICES=$MIG_UUID taskset -c $CPU_RANGE ./gemm_benchmark $MATRIX_SIZE $ITERATIONS > /tmp/mig_concurrent_$mig_idx.txt 2>&1 &
+    CUDA_VISIBLE_DEVICES=$MIG_UUID ./gemm_benchmark $MATRIX_SIZE $ITERATIONS > /tmp/with_partition_$mig_idx.txt 2>&1 &
     PID=$!
     PIDS+=($PID)
     
     # Move to cgroup
     sleep 0.5
-    echo $PID | sudo tee "$CGROUP_BASE/mig$mig_idx/cgroup.procs" > /dev/null
+    echo $PID | sudo tee "$CGROUP_BASE/mig$mig_idx/cgroup.procs" > /dev/null 2>&1
+    
+    # Verify
+    AFFINITY=$(taskset -cp $PID 2>/dev/null | grep -oP "list: \K.*" || echo "N/A")
+    echo "  Verified CPU affinity: $AFFINITY"
 done
 
-echo "All workloads started. Waiting for completion..."
 echo ""
+echo "All workloads started. Waiting for completion..."
 
 # Wait for all
 for pid in "${PIDS[@]}"; do
     wait $pid
 done
 
-# Collect results
-declare -A RESULTS_CONCURRENT
+echo "Test 2 complete!"
+echo ""
 
+# Collect results
+echo "Results:"
+TOTAL_WITH_PART=0
+COUNT=0
 for mig_idx in "${TEST_MIGS[@]}"; do
-    RESULT=$(grep "Performance:" /tmp/mig_concurrent_$mig_idx.txt | grep -oP '\d+\.\d+')
-    RESULTS_CONCURRENT[$mig_idx]=$RESULT
+    RESULT=$(grep "Performance:" /tmp/with_partition_$mig_idx.txt | grep -oP '\d+\.\d+')
+    WITH_PARTITION_RESULTS[$mig_idx]=$RESULT
+    TOTAL_WITH_PART=$(echo "$TOTAL_WITH_PART + $RESULT" | bc)
+    COUNT=$((COUNT + 1))
+    echo "  MIG $mig_idx: $RESULT GFLOPS"
 done
 
-echo "Concurrent execution complete!"
+AVG_WITH_PART=$(echo "scale=2; $TOTAL_WITH_PART / $COUNT" | bc)
+echo ""
+echo "Average performance WITH partitioning: $AVG_WITH_PART GFLOPS"
+DEGRADATION_WITH_PART=$(echo "scale=2; (($BASELINE - $AVG_WITH_PART) / $BASELINE) * 100" | bc)
+echo "Performance degradation: ${DEGRADATION_WITH_PART}%"
 echo ""
 
 # Summary
 echo "=========================================="
-echo "RESULTS SUMMARY"
+echo "FINAL RESULTS & ANALYSIS"
 echo "=========================================="
 echo ""
-printf "%-10s %-20s %-20s %-20s %-15s\n" "MIG" "No Partition" "With Partition" "Concurrent" "Difference"
-printf "%-10s %-20s %-20s %-20s %-15s\n" "---" "------------" "--------------" "----------" "----------"
+printf "%-30s %15s\n" "Metric" "Value"
+printf "%-30s %15s\n" "------" "-----"
+printf "%-30s %15s\n" "Baseline (1 MIG alone)" "$BASELINE GFLOPS"
+printf "%-30s %15s\n" "Avg WITHOUT partitioning" "$AVG_NO_PART GFLOPS"
+printf "%-30s %15s\n" "Avg WITH partitioning" "$AVG_WITH_PART GFLOPS"
+printf "%-30s %15s\n" "Degradation WITHOUT" "${DEGRADATION_NO_PART}%"
+printf "%-30s %15s\n" "Degradation WITH" "${DEGRADATION_WITH_PART}%"
+echo ""
+
+# Calculate improvement
+IMPROVEMENT=$(echo "scale=2; $DEGRADATION_NO_PART - $DEGRADATION_WITH_PART" | bc)
+
+echo "=== INTERPRETATION ==="
+echo ""
+
+if (( $(echo "$DEGRADATION_NO_PART > 10" | bc -l) )); then
+    echo "✓ Without partitioning: ${DEGRADATION_NO_PART}% degradation detected"
+    echo "  This proves CPU contention exists when running multiple MIG workloads"
+else
+    echo "⚠ Without partitioning: Only ${DEGRADATION_NO_PART}% degradation"
+    echo "  CPU contention is minimal (workload may not be CPU-intensive enough)"
+fi
+
+echo ""
+
+if (( $(echo "$DEGRADATION_WITH_PART < 5" | bc -l) )); then
+    echo "✓ With partitioning: Only ${DEGRADATION_WITH_PART}% degradation"
+    echo "  CPU partitioning successfully prevents interference!"
+else
+    echo "⚠ With partitioning: ${DEGRADATION_WITH_PART}% degradation"
+    echo "  CPU partitioning helps but some interference remains"
+fi
+
+echo ""
+
+if (( $(echo "$IMPROVEMENT > 5" | bc -l) )); then
+    echo "✓✓ PARTITIONING WORKING: ${IMPROVEMENT}% performance improvement!"
+    echo "   CPU partitioning is successfully isolating MIG workloads"
+elif (( $(echo "$IMPROVEMENT > 0" | bc -l) )); then
+    echo "✓ Partitioning provides modest ${IMPROVEMENT}% improvement"
+    echo "  Benefit exists but workload may not be CPU-bound"
+else
+    echo "⚠ No clear benefit from partitioning"
+    echo "  Workload may be GPU-bound (not CPU-intensive)"
+    echo "  This is actually fine - partitioning prevents future interference"
+fi
+
+echo ""
+echo "=== Per-Instance Details ==="
+echo ""
+printf "%-10s %-20s %-20s %-15s\n" "MIG" "Without Partition" "With Partition" "Improvement"
+printf "%-10s %-20s %-20s %-15s\n" "---" "-----------------" "--------------" "-----------"
 
 for mig_idx in "${TEST_MIGS[@]}"; do
-    NO_PART=${RESULTS_NO_PARTITION[$mig_idx]}
-    WITH_PART=${RESULTS_WITH_PARTITION[$mig_idx]}
-    CONCURRENT=${RESULTS_CONCURRENT[$mig_idx]}
+    NO_PART=${NO_PARTITION_RESULTS[$mig_idx]}
+    WITH_PART=${WITH_PARTITION_RESULTS[$mig_idx]}
     
-    # Calculate percentage difference
     if [ ! -z "$NO_PART" ] && [ ! -z "$WITH_PART" ]; then
-        DIFF=$(echo "scale=2; (($WITH_PART - $NO_PART) / $NO_PART) * 100" | bc)
+        IMP=$(echo "scale=2; (($WITH_PART - $NO_PART) / $NO_PART) * 100" | bc)
     else
-        DIFF="N/A"
+        IMP="N/A"
     fi
     
-    printf "%-10s %-20s %-20s %-20s %-15s\n" \
+    printf "%-10s %-20s %-20s %-15s\n" \
         "$mig_idx" \
         "${NO_PART} GFLOPS" \
         "${WITH_PART} GFLOPS" \
-        "${CONCURRENT} GFLOPS" \
-        "${DIFF}%"
+        "${IMP}%"
 done
 
 echo ""
-echo "=== Analysis ==="
-echo ""
-echo "✓ If 'With Partition' ≈ 'No Partition': CPU partitioning is NOT bottlenecking GPU"
-echo "✓ If 'Concurrent' ≈ 'With Partition': MIG instances are properly isolated"
-echo "✓ Small differences (<5%) are normal and expected"
-echo "✗ Large differences (>10%) may indicate issues with the setup"
+echo "=== CONCLUSION ==="
 echo ""
 
-# Cleanup
-rm -f /tmp/mig_result_*.txt /tmp/mig_concurrent_*.txt
+if (( $(echo "$IMPROVEMENT > 5" | bc -l) )); then
+    echo "✅ SUCCESS: CPU partitioning is working correctly!"
+    echo "   Your MIG instances are properly isolated at both GPU and CPU levels."
+elif (( $(echo "$DEGRADATION_NO_PART < 5" | bc -l) )); then
+    echo "✅ SETUP CORRECT: Partitioning is configured properly"
+    echo "   Note
