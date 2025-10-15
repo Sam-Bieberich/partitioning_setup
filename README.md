@@ -10,12 +10,12 @@
 
 4. Verify that the CPU/GPU partition is working with the following scripts:
 
-*
+<!-- Need to find a method which conclusively confirms it  -->
 
 ## File Explanations
 
-* Run the mig_setup_7.sh bash file to create seven equal partitions of the GPU on a node. Requires sudo access. To test that sudo works, you can run sudo -v
-* Run the cgroups_claude.sh bash file with sudo to create 7 partitions of the CPU, which are then connected with the 7 MIG partitions from earlier. MIG must be set up already for this file to run. 
+* Run the mig_easy_setup.sh bash file to create seven equal partitions of the GPU on a node. Requires sudo access. To test that sudo works, you can run sudo -v
+* Run the setup_mig_cpu_affinity.sh bash file with sudo to create 7 partitions of the CPU, which are then connected with the 7 MIG partitions from earlier. MIG must be set up already for this file to run. 
 * Basic usage of mig_launcher.sh:
 
 ```
@@ -30,13 +30,17 @@ Examples:
 ./mig_launcher.sh -v 3 python debug.py        # Run on MIG 3 with verbose output
 ```
 
-### Check version of cgroups 
+<!-- Run these types of jobs only after verification that it is working -->
+
+## Check version of cgroups 
 
 ```stat -fc %T /sys/fs/cgroup/```   
 
 If the output is cgroup2fs, it means cgroup v2 is in use; if it is tmpfs, it means cgroup v1 is in use
 
-### Check that CPU partitioning is online
+## Check that CPU partitioning is online
+
+* Do this after running the setup_mig_cpu_affinity.sh file. 
 
 ```
 for i in {0..6}; do
@@ -44,4 +48,4 @@ for i in {0..6}; do
 done
 ```
 
-* If there is a python program running on htop (click t after htop to see CPU tree), and it needs to be killed, do the kill $PID or sudo killall python3. 
+* If there is a python program running on htop (click 't' after htop to see CPU tree), and it needs to be killed, do the kill $PID or sudo killall python3. 
