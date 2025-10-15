@@ -2,13 +2,15 @@
 
 ## Workflow
 
-1. Either run mig_easy_setup.sh to immediately create the MIG partitions, or run mig_flags.sh with the --create flag if the node has already been reset.
+1. Either sudo bash mig_easy_setup.sh to immediately create the MIG partitions, or use mig_flags.sh with the --create flag if the node has already been reset recently, and the old MIG partitions deleted. 
 
-2. MIG should be confirmed as being "successful"
+2. Confirm that MIG partitioning was "successful"
 
 3. Run the setup_mig_cpu_affinity.sh to create cgroups which interface with the MIG partitions in the same 1/7 resource ratio. 
 
-4. 
+4. Verify that the CPU/GPU partition is working with the following scripts:
+
+*
 
 ## File Explanations
 
@@ -28,8 +30,6 @@ Examples:
 ./mig_launcher.sh -v 3 python debug.py        # Run on MIG 3 with verbose output
 ```
 
-
-
 ### Check version of cgroups 
 
 ```stat -fc %T /sys/fs/cgroup/```   
@@ -44,4 +44,4 @@ for i in {0..6}; do
 done
 ```
 
-* If there is a python program running on htop (click t after htop to see CPU tree), and it needs to be killed, do the kill $PID or killall python3. 
+* If there is a python program running on htop (click t after htop to see CPU tree), and it needs to be killed, do the kill $PID or sudo killall python3. 

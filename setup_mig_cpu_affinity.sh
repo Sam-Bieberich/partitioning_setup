@@ -2,7 +2,6 @@
 
 # MIG-CPU Affinity Setup Script
 # This script creates cgroup v2 slices for each MIG instance and binds them to CPU cores
-
 set -e
 
 # Configuration
