@@ -3,7 +3,7 @@
 import mpi4py.rc
 mpi4py.rc.initialize = False  # disable auto-initialize
 mpi4py.rc.finalize = False    # disable auto-finalize
-from mpi4py import MPI
+from mpi4py import MPI #needs to load the mpi py module first
 import numpy as np
 import os
 import subprocess
