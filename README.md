@@ -49,3 +49,13 @@ done
 ```
 
 * If there is a python program running on htop (click 't' after htop to see CPU tree), and it needs to be killed, do the kill $PID or sudo killall python3. 
+
+Can also use this as a sanity check
+
+```
+cd /sys/fs/cgroup/mig/mig1
+echo -n "cpus:           " && cat cpuset.cpus
+echo -n "cpus.effective: " && cat cpuset.cpus.effective
+echo -n "mems:           " && cat cpuset.mems
+echo -n "mems.effective: " && cat cpuset.mems.effective
+```
