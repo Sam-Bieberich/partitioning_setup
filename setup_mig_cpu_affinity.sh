@@ -84,49 +84,49 @@ for i in $(seq 0 $((NUM_MIG_INSTANCES - 1))); do
     echo "  Created cgroup: $CGROUP_PATH"
 done
 
-echo ""
-echo "=== Setup Complete ==="
-echo ""
-echo "To use these cgroups with your applications:"
-echo "1. Start your application and get its PID"
-echo "2. Move it to the appropriate cgroup:"
-echo "   echo <PID> > $CGROUP_BASE/mig<N>/cgroup.procs"
-echo ""
-echo "Or use systemd-run:"
-echo "   systemd-run --slice=mig.slice --property=AllowedCPUs=<CPU_RANGE> \\"
-echo "     --setenv=CUDA_VISIBLE_DEVICES=<MIG_UUID> your_command"
-echo ""
-echo "Example helper function (add to ~/.bashrc):"
-cat << 'EOF'
+# echo ""
+# echo "=== Setup Complete ==="
+# echo ""
+# echo "To use these cgroups with your applications:"
+# echo "1. Start your application and get its PID"
+# echo "2. Move it to the appropriate cgroup:"
+# echo "   echo <PID> > $CGROUP_BASE/mig<N>/cgroup.procs"
+# echo ""
+# echo "Or use systemd-run:"
+# echo "   systemd-run --slice=mig.slice --property=AllowedCPUs=<CPU_RANGE> \\"
+# echo "     --setenv=CUDA_VISIBLE_DEVICES=<MIG_UUID> your_command"
+# echo ""
+# echo "Example helper function (add to ~/.bashrc):"
+# cat << 'EOF'
 
-# Run command on specific MIG instance with CPU affinity
-run_on_mig() {
-    local mig_idx=$1
-    shift
-    local cgroup_path="/sys/fs/cgroup/mig/mig$mig_idx"
+# # Run command on specific MIG instance with CPU affinity
+# run_on_mig() {
+#     local mig_idx=$1
+#     shift
+#     local cgroup_path="/sys/fs/cgroup/mig/mig$mig_idx"
     
-    if [ ! -d "$cgroup_path" ]; then
-        echo "ERROR: MIG cgroup $mig_idx not found"
-        return 1
-    fi
+#     if [ ! -d "$cgroup_path" ]; then
+#         echo "ERROR: MIG cgroup $mig_idx not found"
+#         return 1
+#     fi
     
-    # Get MIG UUID
-    local mig_uuid=$(nvidia-smi -L | grep "MIG" | sed -n "$((mig_idx + 1))p" | grep -oP 'UUID: \K[^)]+')
+#     # Get MIG UUID
+#     local mig_uuid=$(nvidia-smi -L | grep "MIG" | sed -n "$((mig_idx + 1))p" | grep -oP 'UUID: \K[^)]+')
     
-    # Run command in background and capture PID
-    CUDA_VISIBLE_DEVICES=$mig_uuid "$@" &
-    local pid=$!
+#     # Run command in background and capture PID
+#     CUDA_VISIBLE_DEVICES=$mig_uuid "$@" &
+#     local pid=$!
     
-    # Move to cgroup
-    echo $pid > "$cgroup_path/cgroup.procs"
-    echo "Started process $pid on MIG $mig_idx with CPU affinity"
+#     # Move to cgroup
+#     echo $pid > "$cgroup_path/cgroup.procs"
+#     echo "Started process $pid on MIG $mig_idx with CPU affinity"
     
-    # Wait for process
-    wait $pid
-}
+#     # Wait for process
+#     wait $pid
+# }
 
-EOF
+# EOF
 
-echo ""
-echo "Usage: setup_mig_cpu_affinity.sh <instance_number> <command>"
-echo "Example: setup_mig_cpu_affinity.sh 0 python train.py"
+# echo ""
+# echo "Usage: setup_mig_cpu_affinity.sh <instance_number> <command>"
+# echo "Example: setup_mig_cpu_affinity.sh 0 python train.py"
