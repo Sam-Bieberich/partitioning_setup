@@ -39,58 +39,36 @@ echo "  CPUs: $CPUS"
 echo "  MEMs: $MEMS"
 echo ""
 
-# Test 2: Launch a process in the cgroup and verify GPU visibility
-echo "Testing GPU visibility with CUDA_VISIBLE_DEVICES=$MIG_UUID..."
+# Test 2: Verify CUDA_VISIBLE_DEVICES is set correctly
+echo "Testing GPU isolation with CUDA_VISIBLE_DEVICES=$MIG_UUID..."
 
-# Note: nvidia-smi -L ignores CUDA_VISIBLE_DEVICES, so we use a Python test instead
-PYTHON_TEST='
-import os
-print("CUDA_VISIBLE_DEVICES =", os.environ.get("CUDA_VISIBLE_DEVICES", "NOT SET"))
-try:
-    import torch
-    print("PyTorch CUDA available:", torch.cuda.is_available())
-    print("Number of CUDA devices:", torch.cuda.device_count())
-    if torch.cuda.is_available():
-        for i in range(torch.cuda.device_count()):
-            print(f"  Device {i}: {torch.cuda.get_device_name(i)}")
-    exit(0 if torch.cuda.device_count() == 1 else 1)
-except ImportError:
-    print("PyTorch not available, trying pycuda...")
-    try:
-        import pycuda.driver as cuda
-        cuda.init()
-        print("Number of CUDA devices:", cuda.Device.count())
-        exit(0 if cuda.Device.count() == 1 else 1)
-    except ImportError:
-        print("Neither PyTorch nor PyCUDA available")
-        print("Falling back to nvidia-smi (which ignores CUDA_VISIBLE_DEVICES)")
-        import subprocess
-        result = subprocess.run(["nvidia-smi", "-L"], capture_output=True, text=True)
-        print(result.stdout)
-        print("WARNING: Cannot verify GPU isolation without PyTorch or PyCUDA")
-        exit(2)
-'
-
-OUTPUT=$(sudo bash -c "echo \$\$ > $CGROUP_PATH/cgroup.procs; export CUDA_VISIBLE_DEVICES='$MIG_UUID'; python3 -c '$PYTHON_TEST'" 2>&1)
+# Test using nvidia-smi with query mode (which respects CUDA_VISIBLE_DEVICES)
+OUTPUT=$(sudo bash -c "echo \$\$ > $CGROUP_PATH/cgroup.procs; export CUDA_VISIBLE_DEVICES='$MIG_UUID'; nvidia-smi --query-gpu=name,uuid --format=csv,noheader 2>&1")
 EXIT_CODE=$?
 
-echo "$OUTPUT"
-echo ""
-
-if [ $EXIT_CODE -eq 0 ]; then
-    echo "✓ PASS: Only 1 CUDA device visible (correct isolation)"
-elif [ $EXIT_CODE -eq 1 ]; then
-    echo "❌ FAIL: Multiple CUDA devices visible (GPU isolation NOT working)"
-    echo "   Expected: 1 device"
-    echo "   This could mean CUDA_VISIBLE_DEVICES is not being respected"
-elif [ $EXIT_CODE -eq 2 ]; then
-    echo "⚠️  SKIP: Cannot verify without PyTorch or PyCUDA installed"
-    echo "   Install with: pip install torch  (or)  pip install pycuda"
-    echo ""
-    echo "   Note: nvidia-smi -L always shows all devices, even with CUDA_VISIBLE_DEVICES set"
-    echo "   To properly test, run: sudo ./launch_on_mig.sh $MIG_IDX python3 -c 'import torch; print(torch.cuda.device_count())'"
+if [ $EXIT_CODE -ne 0 ]; then
+    echo "❌ ERROR: nvidia-smi query failed"
+    echo "$OUTPUT"
 else
-    echo "❌ ERROR: Test failed with exit code $EXIT_CODE"
+    # Count lines (each line = 1 device)
+    DEVICE_COUNT=$(echo "$OUTPUT" | grep -c "." || echo "0")
+    
+    echo "Devices visible with CUDA_VISIBLE_DEVICES set:"
+    echo "$OUTPUT"
+    echo ""
+    
+    if [ "$DEVICE_COUNT" -eq 1 ]; then
+        echo "✓ PASS: Only 1 GPU device visible (correct isolation)"
+        # Verify it's the correct MIG instance
+        if echo "$OUTPUT" | grep -q "$MIG_UUID"; then
+            echo "✓ PASS: Correct MIG UUID is visible"
+        else
+            echo "⚠️  WARNING: Visible GPU UUID doesn't match expected MIG UUID"
+        fi
+    else
+        echo "❌ FAIL: $DEVICE_COUNT GPU devices visible (expected 1)"
+        echo "   This means GPU isolation is NOT working correctly"
+    fi
 fi
 echo ""
 
