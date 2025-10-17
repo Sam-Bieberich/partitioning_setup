@@ -47,14 +47,18 @@ print()
 print("3. Cgroup:")
 try:
     pid = os.getpid()
-    with open(f'/proc/{pid}/cgroup', 'r') as f:
-        cgroup_line = f.read().strip().split('\n')[0]
-        cgroup_path = cgroup_line.split(':')[-1]
-        print(f"   {cgroup_path}")
-        if '/mig/mig' in cgroup_path:
-            print("   ✓ In MIG cgroup")
+    with open(f'/proc/{pid}/cgroup', 'r', errors='ignore') as f:
+        lines = f.readlines()
+        if lines:
+            cgroup_line = lines[0].strip()
+            cgroup_path = cgroup_line.split(':')[-1]
+            print(f"   {cgroup_path}")
+            if '/mig/mig' in cgroup_path:
+                print("   ✓ In MIG cgroup")
+            else:
+                print("   ⚠ Not in expected /mig/migN cgroup")
         else:
-            print("   ⚠ Not in expected /mig/migN cgroup")
+            print("   ✗ No cgroup information available")
 except Exception as e:
     print(f"   ✗ Could not read: {e}")
 print()
@@ -63,16 +67,22 @@ print()
 print("4. NUMA Memory Nodes:")
 try:
     pid = os.getpid()
-    with open(f'/proc/{pid}/status', 'r') as f:
+    found = False
+    with open(f'/proc/{pid}/status', 'r', errors='ignore') as f:
         for line in f:
             if 'Mems_allowed_list' in line:
                 mems = line.split(':')[1].strip()
                 print(f"   Allowed nodes: {mems}")
-                if len(mems) < 5:  # Single digit or small range
+                if len(mems) <= 3:  # Single digit or short range like "0" or "0-1"
                     print("   ✓ NUMA binding detected")
                 else:
                     print("   ⚠ Multiple NUMA nodes")
+                found = True
                 break
+    if not found:
+        print("   ⚠ Could not find Mems_allowed_list")
+except MemoryError:
+    print("   ✗ Memory error reading status file")
 except Exception as e:
     print(f"   ✗ Could not check: {e}")
 print()
