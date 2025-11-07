@@ -15,15 +15,15 @@
 ## File Explanations
 
 * Run the mig_easy_setup.sh bash file to create seven equal partitions of the GPU on a node. Requires sudo access. To test that sudo works, you can run sudo -v
-* Run the setup_mig_cpu_affinity.sh bash file with sudo to create 7 partitions of the CPU, which are then connected with the 7 MIG partitions from earlier. MIG must be set up already for this file to run. 
+* Run the setup_mig_cpu_affinity.sh bash file with sudo to create 7 partitions of the CPU, which are then connected with the 7 MIG partitions from earlier. MIG must be set up already for this file to run.
 * Basic usage of mig_launcher.sh:
 
-```
+```bash
 ./mig_launcher.sh <mig_instance_number> <your_command>
 ```
 
 Examples:
-```
+```bash
 ./mig_launcher.sh 0 python train.py           # Run on MIG 0
 ./mig_launcher.sh 1 python inference.py       # Run on MIG 1
 ./mig_launcher.sh -d 2 python job.py          # Run on MIG 2 in background
@@ -42,7 +42,7 @@ If the output is cgroup2fs, it means cgroup v2 is in use; if it is tmpfs, it mea
 
 * Do this after running the setup_mig_cpu_affinity.sh file. 
 
-```
+```bash
 for i in {0..6}; do
     echo "MIG $i CPUs: $(cat /sys/fs/cgroup/mig/mig$i/cpuset.cpus)"
 done
@@ -52,7 +52,7 @@ done
 
 Can also use this as a sanity check
 
-```
+```bash
 cd /sys/fs/cgroup/mig/mig1
 echo -n "cpus:           " && cat cpuset.cpus
 echo -n "cpus.effective: " && cat cpuset.cpus.effective
